@@ -1,1 +1,6 @@
 venv
+data
+dataset
+runs
+*.pt
+results
