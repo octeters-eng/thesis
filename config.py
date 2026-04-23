@@ -16,7 +16,6 @@ VAL_DIR = DATASET_DIR / "val"
 TEST_DIR = DATASET_DIR / "test"
 
 RUNS_DIR = PROJECT_ROOT / "runs"
-RESULTS_DIR = PROJECT_ROOT / "results"
 
 # ============================================================
 # Seed Classes (16 classes from dataset)
@@ -85,24 +84,10 @@ YOLO_VERSIONS = {
 MLFLOW_TRACKING_URI = str(PROJECT_ROOT / "mlruns")
 MLFLOW_EXPERIMENT_NAME = "seed-recognition-yolo"
 
-# ============================================================
-# Evaluation Metrics (Classification)
-# ============================================================
-METRICS_TO_COMPARE = [
-    "top1_accuracy",
-    "top5_accuracy",
-    "precision_macro",
-    "recall_macro",
-    "f1_macro",
-    "inference_time_ms",
-    "model_size_mb",
-    "parameters",
-]
-
 
 def create_directories():
     """Create all necessary project directories."""
-    for d in [DATASET_DIR, TRAIN_DIR, VAL_DIR, TEST_DIR, RUNS_DIR, RESULTS_DIR]:
+    for d in [DATASET_DIR, TRAIN_DIR, VAL_DIR, TEST_DIR, RUNS_DIR]:
         d.mkdir(parents=True, exist_ok=True)
 
 

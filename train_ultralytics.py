@@ -9,7 +9,6 @@ Usage:
 """
 
 import argparse
-import json
 import time
 from pathlib import Path
 
@@ -17,7 +16,7 @@ import mlflow
 from ultralytics import YOLO
 
 from config import (
-    DATASET_DIR, RUNS_DIR, RESULTS_DIR,
+    DATASET_DIR, RUNS_DIR,
     BATCH_SIZE, EPOCHS, IMG_SIZE, DEVICE,
     YOLO_VERSIONS, MLFLOW_TRACKING_URI, MLFLOW_EXPERIMENT_NAME,
 )
@@ -142,11 +141,7 @@ def train_model(model_name: str, weights: str, epochs: int = EPOCHS,
             **metrics,
         }
 
-    results_json = run_dir / "training_results.json"
-    with open(results_json, 'w') as f:
-        json.dump(result_data, f, indent=2)
-    print(f"\nResults saved to {results_json}")
-
+    print(f"\nTraining complete for {model_name} (MLflow run: {result_data['mlflow_run_id']})")
     return result_data
 
 
@@ -176,11 +171,7 @@ def train_all(epochs: int = EPOCHS, batch_size: int = BATCH_SIZE,
             print(f"\nERROR training {model_name}: {e}")
             all_results[model_name] = {"model": model_name, "error": str(e)}
 
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    out = RESULTS_DIR / "training_results.json"
-    with open(out, 'w') as f:
-        json.dump(all_results, f, indent=2, default=str)
-    print(f"\nAll training results saved to {out}")
+    print(f"\nTraining complete. {len(all_results)} models logged to MLflow.")
     return all_results
 
 

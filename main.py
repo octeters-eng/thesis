@@ -5,14 +5,15 @@ Steps:
   1. Prepare dataset (flatten subfolders, split into train/val/test)
   2. Train all YOLO classification models
   3. Evaluate all trained models on the test set
-  4. Generate comparison charts and report
+
+All metrics and artifacts are logged to MLflow.
+Use `mlflow ui` to compare models interactively.
 
 Usage:
     python main.py                   # Full pipeline
     python main.py --step prepare    # Only prepare dataset
     python main.py --step train      # Only train
     python main.py --step evaluate   # Only evaluate
-    python main.py --step compare    # Only compare/visualise
 """
 
 import argparse
@@ -22,7 +23,7 @@ from pathlib import Path
 import mlflow
 
 from config import (
-    DATA_SOURCE_DIR, DATASET_DIR, RUNS_DIR, RESULTS_DIR,
+    DATA_SOURCE_DIR, DATASET_DIR, RUNS_DIR,
     YOLO_VERSIONS, create_directories,
     MLFLOW_TRACKING_URI, MLFLOW_EXPERIMENT_NAME,
 )
@@ -72,21 +73,10 @@ def step_evaluate():
     evaluate_all()
 
 
-def step_compare():
-    """Generate comparison charts and report."""
-    print("\n" + "=" * 60)
-    print("STEP 4: COMPARE RESULTS")
-    print("=" * 60)
-
-    from compare_results import main as compare_main
-    compare_main()
-
-
 STEPS = {
     "prepare": step_prepare,
     "train": step_train,
     "evaluate": step_evaluate,
-    "compare": step_compare,
 }
 
 
@@ -115,7 +105,6 @@ def main():
     print(f"Source: {DATA_SOURCE_DIR}")
     print(f"Dataset: {DATASET_DIR}")
     print(f"Runs: {RUNS_DIR}")
-    print(f"Results: {RESULTS_DIR}")
     print(f"MLflow: {MLFLOW_TRACKING_URI}")
 
     if args.step:
@@ -124,10 +113,9 @@ def main():
         step_prepare()
         step_train()
         step_evaluate()
-        step_compare()
 
     print("\n" + "=" * 60)
-    print("DONE")
+    print("DONE — View results: mlflow ui")
     print("=" * 60)
 
 

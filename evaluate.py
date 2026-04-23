@@ -7,6 +7,7 @@ Usage: python evaluate.py
 
 import json
 import time
+import tempfile
 from pathlib import Path
 from collections import Counter
 
@@ -16,8 +17,13 @@ import mlflow
 from PIL import Image
 from ultralytics import YOLO
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 from config import (
-    DATASET_DIR, RUNS_DIR, RESULTS_DIR, IMG_SIZE, DEVICE,
+    DATASET_DIR, RUNS_DIR, IMG_SIZE, DEVICE,
     SEED_CLASSES, YOLO_VERSIONS, MLFLOW_TRACKING_URI, MLFLOW_EXPERIMENT_NAME,
 )
 
@@ -200,11 +206,29 @@ def evaluate_all():
                         "model_size_mb": m["model_size_mb"],
                         "parameters": m.get("parameters", 0),
                     })
-                    # Log per-class F1 scores
+                    # Log per-class metrics
                     for cls_name, cls_metrics in m.get("per_class", {}).items():
-                        mlflow.log_metric(
-                            f"f1_{cls_name}", cls_metrics["f1"]
+                        mlflow.log_metric(f"f1_{cls_name}", cls_metrics["f1"])
+                        mlflow.log_metric(f"precision_{cls_name}", cls_metrics["precision"])
+                        mlflow.log_metric(f"recall_{cls_name}", cls_metrics["recall"])
+
+                    # Log confusion matrix as figure artifact
+                    cm = m.get("confusion_matrix")
+                    class_names = m.get("class_names")
+                    if cm is not None and class_names is not None:
+                        fig, ax = plt.subplots(figsize=(12, 10))
+                        sns.heatmap(
+                            np.array(cm), annot=True, fmt="d", cmap="Blues",
+                            xticklabels=class_names, yticklabels=class_names, ax=ax,
                         )
+                        ax.set_xlabel("Predicted")
+                        ax.set_ylabel("True")
+                        ax.set_title(f"Confusion Matrix — {model_name}")
+                        plt.xticks(rotation=45, ha="right", fontsize=7)
+                        plt.yticks(fontsize=7)
+                        plt.tight_layout()
+                        mlflow.log_figure(fig, f"confusion_matrix_{model_name}.png")
+                        plt.close(fig)
 
                 print(f"\n  {model_name}:")
                 print(f"    Top-1 Acc  : {m['top1_accuracy']:.4f}")
@@ -218,12 +242,7 @@ def evaluate_all():
             print(f"\n  ERROR {model_name}: {e}")
             all_results[model_name] = {"model": model_name, "error": str(e)}
 
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    out = RESULTS_DIR / "evaluation_results.json"
-    with open(out, 'w') as f:
-        json.dump(all_results, f, indent=2, default=str)
-    print(f"\nAll results saved to {out}")
-
+    print(f"\nEvaluation complete. {len(all_results)} models logged to MLflow.")
     return all_results
 
 
