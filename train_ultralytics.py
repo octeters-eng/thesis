@@ -10,7 +10,6 @@ Usage:
 
 import argparse
 import time
-from pathlib import Path
 
 import mlflow
 from ultralytics import YOLO
@@ -52,8 +51,54 @@ def train_model(model_name: str, weights: str, epochs: int = EPOCHS,
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
 
+    # Train the model (Ultralytics may start its own MLflow run internally)
+    start_time = time.time()
+    results = model.train(
+        data=str(DATASET_DIR),
+        epochs=epochs,
+        batch=batch_size,
+        imgsz=img_size,
+        device=device,
+        project=str(RUNS_DIR),
+        name=model_name,
+        exist_ok=True,
+        patience=15,
+        save=True,
+        plots=True,
+        verbose=True,
+    )
+    training_time = time.time() - start_time
+
+    # End any active run left by Ultralytics' built-in MLflow callback
+    mlflow.end_run()
+
+    run_dir = RUNS_DIR / model_name
+    best_weights = run_dir / "weights" / "best.pt"
+
+    # Extract metrics
+    metrics = {}
+    if results and hasattr(results, 'results_dict'):
+        rd = results.results_dict
+        metrics["top1_accuracy"] = rd.get("metrics/accuracy_top1", 0)
+        metrics["top5_accuracy"] = rd.get("metrics/accuracy_top5", 0)
+
+    # Model size
+    model_size_mb = 0
+    if best_weights.exists():
+        model_size_mb = best_weights.stat().st_size / (1024 * 1024)
+
+    # Parameter count
+    params = 0
+    try:
+        m = YOLO(str(best_weights))
+        info = m.info(verbose=False)
+        if info and len(info) > 1:
+            params = info[1]
+    except Exception:
+        pass
+
+    # Log our own summary run to MLflow
     with mlflow.start_run(run_name=f"train-{model_name}") as run:
-        # Log training parameters
         mlflow.log_params({
             "model_name": model_name,
             "weights": weights,
@@ -64,49 +109,6 @@ def train_model(model_name: str, weights: str, epochs: int = EPOCHS,
             "patience": 15,
         })
 
-        start_time = time.time()
-        results = model.train(
-            data=str(DATASET_DIR),
-            epochs=epochs,
-            batch=batch_size,
-            imgsz=img_size,
-            device=device,
-            project=str(RUNS_DIR),
-            name=model_name,
-            exist_ok=True,
-            patience=15,
-            save=True,
-            plots=True,
-            verbose=True,
-        )
-        training_time = time.time() - start_time
-
-        run_dir = RUNS_DIR / model_name
-        best_weights = run_dir / "weights" / "best.pt"
-
-        # Extract metrics
-        metrics = {}
-        if results and hasattr(results, 'results_dict'):
-            rd = results.results_dict
-            metrics["top1_accuracy"] = rd.get("metrics/accuracy_top1", 0)
-            metrics["top5_accuracy"] = rd.get("metrics/accuracy_top5", 0)
-
-        # Model size
-        model_size_mb = 0
-        if best_weights.exists():
-            model_size_mb = best_weights.stat().st_size / (1024 * 1024)
-
-        # Parameter count
-        params = 0
-        try:
-            m = YOLO(str(best_weights))
-            info = m.info(verbose=False)
-            if info and len(info) > 1:
-                params = info[1]
-        except Exception:
-            pass
-
-        # Log metrics to MLflow
         mlflow.log_metrics({
             "training_time_seconds": round(training_time, 1),
             "model_size_mb": round(model_size_mb, 2),

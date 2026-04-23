@@ -5,16 +5,12 @@ Collects: accuracy, precision, recall, F1, confusion matrix, inference speed.
 Usage: python evaluate.py
 """
 
-import json
 import time
-import tempfile
 from pathlib import Path
 from collections import Counter
 
 import numpy as np
-import torch
 import mlflow
-from PIL import Image
 from ultralytics import YOLO
 
 import matplotlib
@@ -24,7 +20,7 @@ import seaborn as sns
 
 from config import (
     DATASET_DIR, RUNS_DIR, IMG_SIZE, DEVICE,
-    SEED_CLASSES, YOLO_VERSIONS, MLFLOW_TRACKING_URI, MLFLOW_EXPERIMENT_NAME,
+     YOLO_VERSIONS, MLFLOW_TRACKING_URI, MLFLOW_EXPERIMENT_NAME,
 )
 
 
