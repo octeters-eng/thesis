@@ -19,9 +19,12 @@ import argparse
 import sys
 from pathlib import Path
 
+import mlflow
+
 from config import (
     DATA_SOURCE_DIR, DATASET_DIR, RUNS_DIR, RESULTS_DIR,
     YOLO_VERSIONS, create_directories,
+    MLFLOW_TRACKING_URI, MLFLOW_EXPERIMENT_NAME,
 )
 
 
@@ -101,6 +104,10 @@ def main():
 
     create_directories()
 
+    # Initialize MLflow
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
+
     print("=" * 60)
     print("SEED RECOGNITION — YOLO CLASSIFICATION COMPARISON")
     print("=" * 60)
@@ -109,6 +116,7 @@ def main():
     print(f"Dataset: {DATASET_DIR}")
     print(f"Runs: {RUNS_DIR}")
     print(f"Results: {RESULTS_DIR}")
+    print(f"MLflow: {MLFLOW_TRACKING_URI}")
 
     if args.step:
         STEPS[args.step]()

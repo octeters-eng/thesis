@@ -14,8 +14,9 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import seaborn as sns
+import mlflow
 
-from config import RESULTS_DIR, RUNS_DIR, METRICS_TO_COMPARE
+from config import RESULTS_DIR, RUNS_DIR, METRICS_TO_COMPARE, MLFLOW_TRACKING_URI, MLFLOW_EXPERIMENT_NAME
 
 
 RESULTS_FILE = RESULTS_DIR / "evaluation_results.json"
@@ -384,6 +385,24 @@ def main():
     with open(report_path, "w") as f:
         f.write(report)
     print(f"  Saved {report_path}")
+
+    # Log all figures and reports to MLflow
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
+
+    with mlflow.start_run(run_name="comparison-report"):
+        mlflow.set_tag("stage", "comparison")
+        # Log all generated figures
+        for fig_file in FIGURES_DIR.glob("*.png"):
+            mlflow.log_artifact(str(fig_file), artifact_path="figures")
+        # Log LaTeX table and summary report
+        mlflow.log_artifact(str(latex_path), artifact_path="reports")
+        mlflow.log_artifact(str(report_path), artifact_path="reports")
+        # Log the evaluation results JSON
+        eval_json = RESULTS_DIR / "evaluation_results.json"
+        if eval_json.exists():
+            mlflow.log_artifact(str(eval_json), artifact_path="reports")
+        print("  Logged all artifacts to MLflow")
 
     # Print to console
     print("\n" + report)

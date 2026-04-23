@@ -53,7 +53,7 @@ TEST_SPLIT = 0.15
 # Training Configuration
 # ============================================================
 BATCH_SIZE = 32
-EPOCHS = 50
+EPOCHS = 2
 LEARNING_RATE = 0.001
 DEVICE = "mps"  # "0" for CUDA GPU, "mps" for Apple Silicon, "cpu" for CPU
 
@@ -78,6 +78,12 @@ YOLO_VERSIONS = {
         "type": "ultralytics",
     },
 }
+
+# ============================================================
+# MLflow Configuration
+# ============================================================
+MLFLOW_TRACKING_URI = str(PROJECT_ROOT / "mlruns")
+MLFLOW_EXPERIMENT_NAME = "seed-recognition-yolo"
 
 # ============================================================
 # Evaluation Metrics (Classification)

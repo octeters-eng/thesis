@@ -13,12 +13,13 @@ import json
 import time
 from pathlib import Path
 
+import mlflow
 from ultralytics import YOLO
 
 from config import (
     DATASET_DIR, RUNS_DIR, RESULTS_DIR,
     BATCH_SIZE, EPOCHS, IMG_SIZE, DEVICE,
-    YOLO_VERSIONS,
+    YOLO_VERSIONS, MLFLOW_TRACKING_URI, MLFLOW_EXPERIMENT_NAME,
 )
 
 
@@ -48,61 +49,98 @@ def train_model(model_name: str, weights: str, epochs: int = EPOCHS,
 
     model = YOLO(weights)
 
-    start_time = time.time()
-    results = model.train(
-        data=str(DATASET_DIR),
-        epochs=epochs,
-        batch=batch_size,
-        imgsz=img_size,
-        device=device,
-        project=str(RUNS_DIR),
-        name=model_name,
-        exist_ok=True,
-        patience=15,
-        save=True,
-        plots=True,
-        verbose=True,
-    )
-    training_time = time.time() - start_time
+    # Setup MLflow
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
 
-    run_dir = RUNS_DIR / model_name
-    best_weights = run_dir / "weights" / "best.pt"
+    with mlflow.start_run(run_name=f"train-{model_name}") as run:
+        # Log training parameters
+        mlflow.log_params({
+            "model_name": model_name,
+            "weights": weights,
+            "epochs": epochs,
+            "batch_size": batch_size,
+            "img_size": img_size,
+            "device": device,
+            "patience": 15,
+        })
 
-    # Extract metrics
-    metrics = {}
-    if results and hasattr(results, 'results_dict'):
-        rd = results.results_dict
-        metrics["top1_accuracy"] = rd.get("metrics/accuracy_top1", 0)
-        metrics["top5_accuracy"] = rd.get("metrics/accuracy_top5", 0)
+        start_time = time.time()
+        results = model.train(
+            data=str(DATASET_DIR),
+            epochs=epochs,
+            batch=batch_size,
+            imgsz=img_size,
+            device=device,
+            project=str(RUNS_DIR),
+            name=model_name,
+            exist_ok=True,
+            patience=15,
+            save=True,
+            plots=True,
+            verbose=True,
+        )
+        training_time = time.time() - start_time
 
-    # Model size
-    model_size_mb = 0
-    if best_weights.exists():
-        model_size_mb = best_weights.stat().st_size / (1024 * 1024)
+        run_dir = RUNS_DIR / model_name
+        best_weights = run_dir / "weights" / "best.pt"
 
-    # Parameter count
-    params = 0
-    try:
-        m = YOLO(str(best_weights))
-        info = m.info(verbose=False)
-        if info and len(info) > 1:
-            params = info[1]
-    except Exception:
-        pass
+        # Extract metrics
+        metrics = {}
+        if results and hasattr(results, 'results_dict'):
+            rd = results.results_dict
+            metrics["top1_accuracy"] = rd.get("metrics/accuracy_top1", 0)
+            metrics["top5_accuracy"] = rd.get("metrics/accuracy_top5", 0)
 
-    result_data = {
-        "model": model_name,
-        "weights": weights,
-        "weights_path": str(best_weights),
-        "run_dir": str(run_dir),
-        "training_time_seconds": round(training_time, 1),
-        "epochs": epochs,
-        "batch_size": batch_size,
-        "img_size": img_size,
-        "model_size_mb": round(model_size_mb, 2),
-        "parameters": params,
-        **metrics,
-    }
+        # Model size
+        model_size_mb = 0
+        if best_weights.exists():
+            model_size_mb = best_weights.stat().st_size / (1024 * 1024)
+
+        # Parameter count
+        params = 0
+        try:
+            m = YOLO(str(best_weights))
+            info = m.info(verbose=False)
+            if info and len(info) > 1:
+                params = info[1]
+        except Exception:
+            pass
+
+        # Log metrics to MLflow
+        mlflow.log_metrics({
+            "training_time_seconds": round(training_time, 1),
+            "model_size_mb": round(model_size_mb, 2),
+            "parameters": params,
+            **{k: float(v) for k, v in metrics.items()},
+        })
+
+        # Log best weights as artifact
+        if best_weights.exists():
+            mlflow.log_artifact(str(best_weights), artifact_path="weights")
+
+        # Log training curves CSV if available
+        results_csv = run_dir / "results.csv"
+        if results_csv.exists():
+            mlflow.log_artifact(str(results_csv), artifact_path="training")
+
+        mlflow.set_tag("stage", "training")
+        mlflow.set_tag("model_type", "ultralytics")
+
+        result_data = {
+            "model": model_name,
+            "weights": weights,
+            "weights_path": str(best_weights),
+            "run_dir": str(run_dir),
+            "training_time_seconds": round(training_time, 1),
+            "epochs": epochs,
+            "batch_size": batch_size,
+            "img_size": img_size,
+            "model_size_mb": round(model_size_mb, 2),
+            "parameters": params,
+            "mlflow_run_id": run.info.run_id,
+            **metrics,
+        }
 
     results_json = run_dir / "training_results.json"
     with open(results_json, 'w') as f:

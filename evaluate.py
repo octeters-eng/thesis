@@ -12,12 +12,13 @@ from collections import Counter
 
 import numpy as np
 import torch
+import mlflow
 from PIL import Image
 from ultralytics import YOLO
 
 from config import (
     DATASET_DIR, RUNS_DIR, RESULTS_DIR, IMG_SIZE, DEVICE,
-    SEED_CLASSES, YOLO_VERSIONS,
+    SEED_CLASSES, YOLO_VERSIONS, MLFLOW_TRACKING_URI, MLFLOW_EXPERIMENT_NAME,
 )
 
 
@@ -172,6 +173,10 @@ def evaluate_all():
     print("=" * 60)
     print(f"Found {len(trained)} models: {list(trained.keys())}")
 
+    # Setup MLflow
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
+
     all_results = {}
     for model_name, weights_path in trained.items():
         try:
@@ -179,6 +184,27 @@ def evaluate_all():
             if m:
                 m["model"] = model_name
                 all_results[model_name] = m
+
+                # Log evaluation metrics to MLflow
+                with mlflow.start_run(run_name=f"eval-{model_name}") as run:
+                    mlflow.set_tag("stage", "evaluation")
+                    mlflow.set_tag("model_name", model_name)
+                    mlflow.log_metrics({
+                        "eval_top1_accuracy": m["top1_accuracy"],
+                        "eval_top5_accuracy": m["top5_accuracy"],
+                        "eval_precision_macro": m["precision_macro"],
+                        "eval_recall_macro": m["recall_macro"],
+                        "eval_f1_macro": m["f1_macro"],
+                        "eval_overall_accuracy": m["overall_accuracy"],
+                        "inference_time_ms": m["inference_time_ms"],
+                        "model_size_mb": m["model_size_mb"],
+                        "parameters": m.get("parameters", 0),
+                    })
+                    # Log per-class F1 scores
+                    for cls_name, cls_metrics in m.get("per_class", {}).items():
+                        mlflow.log_metric(
+                            f"f1_{cls_name}", cls_metrics["f1"]
+                        )
 
                 print(f"\n  {model_name}:")
                 print(f"    Top-1 Acc  : {m['top1_accuracy']:.4f}")
