@@ -1,21 +1,28 @@
 """
-Configuration file for Seed Recognition (Classification) - YOLO Model Comparison
-Thesis Project
+Configuration file for Seed Recognition (Classification) thesis project.
 """
 
+import os
 from pathlib import Path
 
 # ============================================================
 # Project Paths
 # ============================================================
 PROJECT_ROOT = Path(__file__).parent.resolve()
-DATA_SOURCE_DIR = PROJECT_ROOT / "data" / "SEEED"  # Raw downloaded data
+DATA_SOURCE_DIR = PROJECT_ROOT / "data" / "SEEED"
 DATASET_DIR = PROJECT_ROOT / "dataset"              # Prepared classification data
 TRAIN_DIR = DATASET_DIR / "train"
 VAL_DIR = DATASET_DIR / "val"
 TEST_DIR = DATASET_DIR / "test"
 
 RUNS_DIR = PROJECT_ROOT / "runs"
+RESULTS_DIR = PROJECT_ROOT / "results"
+
+# Backward-compatible alias for older scripts.
+RAW_DATA_DIR = DATA_SOURCE_DIR
+
+# Optional Google Drive folder ID used by download_dataset.py.
+GDRIVE_FOLDER_ID = os.getenv("SEED_GDRIVE_FOLDER_ID", "").strip()
 
 # ============================================================
 # Seed Classes (16 classes from dataset)
@@ -87,7 +94,7 @@ MLFLOW_EXPERIMENT_NAME = "seed-recognition-yolo"
 
 def create_directories():
     """Create all necessary project directories."""
-    for d in [DATASET_DIR, TRAIN_DIR, VAL_DIR, TEST_DIR, RUNS_DIR]:
+    for d in [DATASET_DIR, TRAIN_DIR, VAL_DIR, TEST_DIR, RUNS_DIR, RESULTS_DIR]:
         d.mkdir(parents=True, exist_ok=True)
 
 

@@ -5,9 +5,9 @@ Collects: accuracy, precision, recall, F1, confusion matrix, inference speed.
 Usage: python evaluate.py
 """
 
+import json
 import time
 from pathlib import Path
-from collections import Counter
 
 import numpy as np
 import mlflow
@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from config import (
-    DATASET_DIR, RUNS_DIR, IMG_SIZE, DEVICE,
+    DATASET_DIR, RUNS_DIR, RESULTS_DIR, IMG_SIZE, DEVICE,
      YOLO_VERSIONS, MLFLOW_TRACKING_URI, MLFLOW_EXPERIMENT_NAME,
 )
 
@@ -32,6 +32,16 @@ def find_trained_models() -> dict:
         if best.exists():
             trained[model_name] = str(best)
     return trained
+
+
+def get_model_label_map(model: YOLO) -> dict:
+    """Return prediction index -> class name mapping from model metadata."""
+    names = getattr(model, "names", None)
+    if isinstance(names, dict):
+        return {int(k): str(v) for k, v in names.items()}
+    if isinstance(names, list):
+        return {i: str(v) for i, v in enumerate(names)}
+    return {}
 
 
 def evaluate_model(model_name: str, weights_path: str,
@@ -72,6 +82,7 @@ def evaluate_model(model_name: str, weights_path: str,
     # Per-class predictions for precision/recall/F1
     class_dirs = sorted([d for d in test_dir.iterdir() if d.is_dir()])
     class_names = [d.name for d in class_dirs]
+    model_label_map = get_model_label_map(model)
 
     y_true = []
     y_pred = []
@@ -84,32 +95,47 @@ def evaluate_model(model_name: str, weights_path: str,
         for img_path in images:
             pred = model.predict(str(img_path), imgsz=img_size, device=device, verbose=False)
             if pred and pred[0].probs is not None:
-                pred_cls = int(pred[0].probs.top1)
-                y_true.append(cls_idx)
-                y_pred.append(pred_cls)
+                pred_idx = int(pred[0].probs.top1)
+                pred_name = model_label_map.get(pred_idx, f"pred_idx_{pred_idx}")
+                y_true.append(class_names[cls_idx])
+                y_pred.append(pred_name)
 
-    y_true = np.array(y_true)
-    y_pred = np.array(y_pred)
+    y_true = np.array(y_true, dtype=object)
+    y_pred = np.array(y_pred, dtype=object)
+
+    label_order = list(class_names)
+    for label in sorted(set(y_pred.tolist())):
+        if label not in label_order:
+            label_order.append(label)
+
+    if set(class_names) != set(model_label_map.values()):
+        missing_in_model = sorted(set(class_names) - set(model_label_map.values()))
+        extra_in_model = sorted(set(model_label_map.values()) - set(class_names))
+        metrics["label_alignment_warning"] = {
+            "missing_in_model": missing_in_model,
+            "extra_in_model": extra_in_model,
+        }
+        print("  WARNING: dataset/model class names do not perfectly match.")
 
     # Compute per-class and macro metrics
-    n_classes = len(class_names)
+    n_classes = len(label_order)
     per_class = {}
     precisions, recalls, f1s = [], [], []
 
-    for i in range(n_classes):
-        tp = int(np.sum((y_pred == i) & (y_true == i)))
-        fp = int(np.sum((y_pred == i) & (y_true != i)))
-        fn = int(np.sum((y_pred != i) & (y_true == i)))
+    for label in label_order:
+        tp = int(np.sum((y_pred == label) & (y_true == label)))
+        fp = int(np.sum((y_pred == label) & (y_true != label)))
+        fn = int(np.sum((y_pred != label) & (y_true == label)))
 
         prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
         rec = tp / (tp + fn) if (tp + fn) > 0 else 0.0
         f1 = 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else 0.0
 
-        per_class[class_names[i]] = {
+        per_class[label] = {
             "precision": round(prec, 4),
             "recall": round(rec, 4),
             "f1": round(f1, 4),
-            "support": int(np.sum(y_true == i)),
+            "support": int(np.sum(y_true == label)),
         }
         precisions.append(prec)
         recalls.append(rec)
@@ -123,10 +149,11 @@ def evaluate_model(model_name: str, weights_path: str,
 
     # Confusion matrix (as nested list for JSON)
     cm = np.zeros((n_classes, n_classes), dtype=int)
+    label_to_idx = {name: i for i, name in enumerate(label_order)}
     for t, p in zip(y_true, y_pred):
-        cm[t, p] += 1
+        cm[label_to_idx[t], label_to_idx[p]] += 1
     metrics["confusion_matrix"] = cm.tolist()
-    metrics["class_names"] = class_names
+    metrics["class_names"] = label_order
 
     # Model size
     metrics["model_size_mb"] = round(Path(weights_path).stat().st_size / (1024 * 1024), 2)
@@ -238,7 +265,13 @@ def evaluate_all():
             print(f"\n  ERROR {model_name}: {e}")
             all_results[model_name] = {"model": model_name, "error": str(e)}
 
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = RESULTS_DIR / "evaluation_results.json"
+    with out_path.open("w", encoding="utf-8") as f:
+        json.dump(all_results, f, indent=2)
+
     print(f"\nEvaluation complete. {len(all_results)} models logged to MLflow.")
+    print(f"Saved evaluation JSON: {out_path}")
     return all_results
 
 

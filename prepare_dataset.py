@@ -17,6 +17,7 @@ Target structure (dataset/):
 Usage: python prepare_dataset.py
 """
 
+import argparse
 import random
 import shutil
 import sys
@@ -25,7 +26,7 @@ from pathlib import Path
 
 from config import (
     DATA_SOURCE_DIR, DATASET_DIR, TRAIN_DIR, VAL_DIR, TEST_DIR,
-    TRAIN_SPLIT, VAL_SPLIT, SEED_CLASSES, create_directories,
+    TRAIN_SPLIT, VAL_SPLIT, create_directories,
 )
 
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.tif', '.tiff'}
@@ -72,13 +73,12 @@ def split_and_copy(class_images: dict, seed: int = 42):
             class_out = split_dir / class_name
             class_out.mkdir(parents=True, exist_ok=True)
 
-            for idx, img_path in enumerate(split_images):
-                # Use unique name to avoid collisions from subfolders
-                out_name = f"{img_path.stem}{img_path.suffix}"
+            for img_path in split_images:
+                # Deterministic unique name prevents collisions across subfolders.
+                rel = img_path.relative_to(DATA_SOURCE_DIR / class_name)
+                rel_key = "_".join(rel.with_suffix("").parts)
+                out_name = f"{rel_key}{img_path.suffix}".replace(" ", "_")
                 out_path = class_out / out_name
-                if out_path.exists():
-                    out_name = f"{img_path.stem}_{idx}{img_path.suffix}"
-                    out_path = class_out / out_name
                 shutil.copy2(img_path, out_path)
 
             stats[split_name][class_name] = len(split_images)
@@ -86,7 +86,7 @@ def split_and_copy(class_images: dict, seed: int = 42):
     return stats
 
 
-def main():
+def main(force_yes: bool = False):
     print("=" * 60)
     print("PREPARE SEED DATASET FOR CLASSIFICATION")
     print("=" * 60)
@@ -99,8 +99,12 @@ def main():
     # Check if already prepared
     if TRAIN_DIR.exists() and any(TRAIN_DIR.iterdir()):
         print(f"Dataset already exists at {DATASET_DIR}")
-        response = input("Re-create? This will delete existing splits. (y/n): ").strip().lower()
-        if response != 'y':
+        if force_yes:
+            should_recreate = True
+        else:
+            response = input("Re-create? This will delete existing splits. (y/n): ").strip().lower()
+            should_recreate = response == "y"
+        if not should_recreate:
             print("Skipping. Use existing dataset.")
             return
         shutil.rmtree(DATASET_DIR)
@@ -151,4 +155,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Prepare seed dataset for classification")
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Assume yes for overwrite prompt.",
+    )
+    args = parser.parse_args()
+    main(force_yes=args.yes)

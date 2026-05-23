@@ -3,25 +3,30 @@ Download dataset from Google Drive.
 Usage: python download_dataset.py
 """
 
-import os
-import sys
+import argparse
 import zipfile
 import tarfile
-import shutil
 from pathlib import Path
 
 try:
     import gdown
 except ImportError:
-    print("Installing gdown...")
-    os.system(f"{sys.executable} -m pip install gdown")
-    import gdown
+    gdown = None
 
 from config import GDRIVE_FOLDER_ID, RAW_DATA_DIR, create_directories
 
 
 def download_from_gdrive(folder_id: str, output_dir: Path):
     """Download entire folder from Google Drive."""
+    if gdown is None:
+        print("ERROR: gdown is not installed. Run: pip install -r requirements.txt")
+        return False
+
+    if not folder_id:
+        print("ERROR: Google Drive folder ID is empty.")
+        print("Set environment variable SEED_GDRIVE_FOLDER_ID before running download.")
+        return False
+
     output_dir.mkdir(parents=True, exist_ok=True)
     
     url = f"https://drive.google.com/drive/folders/{folder_id}"
@@ -125,7 +130,7 @@ def show_dataset_summary(data_dir: Path):
     return images, labels
 
 
-def main():
+def main(force_yes: bool = False):
     create_directories()
     
     print("=" * 60)
@@ -136,8 +141,12 @@ def main():
     existing_files = list(RAW_DATA_DIR.rglob("*"))
     if any(f.is_file() for f in existing_files):
         print(f"\nData already exists in {RAW_DATA_DIR}")
-        response = input("Re-download? (y/n): ").strip().lower()
-        if response != 'y':
+        if force_yes:
+            should_redownload = True
+        else:
+            response = input("Re-download? (y/n): ").strip().lower()
+            should_redownload = response == "y"
+        if not should_redownload:
             show_dataset_summary(RAW_DATA_DIR)
             return
     
@@ -152,4 +161,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Download seed dataset from Google Drive")
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Assume yes for re-download prompt.",
+    )
+    args = parser.parse_args()
+    main(force_yes=args.yes)

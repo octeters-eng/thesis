@@ -69,8 +69,9 @@ def train_model(model_name: str, weights: str, epochs: int = EPOCHS,
     )
     training_time = time.time() - start_time
 
-    # End any active run left by Ultralytics' built-in MLflow callback
-    mlflow.end_run()
+    # End any active run left by Ultralytics' built-in MLflow callback.
+    if mlflow.active_run() is not None:
+        mlflow.end_run()
 
     run_dir = RUNS_DIR / model_name
     best_weights = run_dir / "weights" / "best.pt"

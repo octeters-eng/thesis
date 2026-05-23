@@ -2,23 +2,28 @@
 Main pipeline orchestrator for Seed Recognition — YOLO Classification Comparison.
 
 Steps:
+  0. (Optional) Download dataset from Google Drive
   1. Prepare dataset (flatten subfolders, split into train/val/test)
   2. Train all YOLO classification models
   3. Evaluate all trained models on the test set
+  4. Generate comparison plots and report
 
 All metrics and artifacts are logged to MLflow.
 Use `mlflow ui` to compare models interactively.
 
 Usage:
     python main.py                   # Full pipeline
+    python main.py --step download   # Download only
     python main.py --step prepare    # Only prepare dataset
     python main.py --step train      # Only train
     python main.py --step evaluate   # Only evaluate
+    python main.py --step compare    # Only compare/report
 """
 
 import argparse
+import subprocess
 import sys
-from pathlib import Path
+from typing import List, Optional
 
 import mlflow
 
@@ -29,28 +34,34 @@ from config import (
 )
 
 
-def step_prepare():
+def run_script(script_name: str, args: Optional[List[str]] = None):
+    """Run a project script as a subprocess and exit on failure."""
+    cmd = [sys.executable, script_name]
+    if args:
+        cmd.extend(args)
+    result = subprocess.run(cmd, check=False)
+    if result.returncode != 0:
+        print(f"ERROR: {script_name} failed.")
+        sys.exit(result.returncode)
+
+
+def step_download(force_yes: bool = False):
+    """Download dataset."""
+    print("\n" + "=" * 60)
+    print("STEP 0: DOWNLOAD DATASET")
+    print("=" * 60)
+    args = ["--yes"] if force_yes else []
+    run_script("download_dataset.py", args)
+
+
+def step_prepare(force_yes: bool = False):
     """Prepare the dataset."""
     print("\n" + "=" * 60)
     print("STEP 1: PREPARE DATASET")
     print("=" * 60)
 
-    if not DATA_SOURCE_DIR.exists():
-        print(f"ERROR: Source data not found at {DATA_SOURCE_DIR}")
-        print("Put your seed images in data/SEEED/ with one folder per class.")
-        sys.exit(1)
-
-    # Check if already prepared
-    if (DATASET_DIR / "train").exists():
-        n_train = sum(1 for _ in (DATASET_DIR / "train").rglob("*") if _.is_file())
-        print(f"Dataset already prepared ({n_train} training images).")
-        resp = input("Re-prepare? [y/N]: ").strip().lower()
-        if resp != "y":
-            print("Skipping.")
-            return
-
-    from prepare_dataset import main as prepare_main
-    prepare_main()
+    args = ["--yes"] if force_yes else []
+    run_script("prepare_dataset.py", args)
 
 
 def step_train():
@@ -59,8 +70,7 @@ def step_train():
     print("STEP 2: TRAIN ALL MODELS")
     print("=" * 60)
 
-    from train_ultralytics import train_all
-    train_all()
+    run_script("train_ultralytics.py", ["--all"])
 
 
 def step_evaluate():
@@ -69,14 +79,23 @@ def step_evaluate():
     print("STEP 3: EVALUATE ALL MODELS")
     print("=" * 60)
 
-    from evaluate import evaluate_all
-    evaluate_all()
+    run_script("evaluate.py")
+
+
+def step_compare():
+    """Generate comparison figures and summary report."""
+    print("\n" + "=" * 60)
+    print("STEP 4: COMPARE MODELS")
+    print("=" * 60)
+    run_script("compare_results.py")
 
 
 STEPS = {
+    "download": step_download,
     "prepare": step_prepare,
     "train": step_train,
     "evaluate": step_evaluate,
+    "compare": step_compare,
 }
 
 
@@ -89,6 +108,11 @@ def main():
         choices=list(STEPS.keys()),
         default=None,
         help="Run a specific step only. Default: run all steps.",
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Assume yes for prompts where available.",
     )
     args = parser.parse_args()
 
@@ -108,11 +132,15 @@ def main():
     print(f"MLflow: {MLFLOW_TRACKING_URI}")
 
     if args.step:
-        STEPS[args.step]()
+        if args.step in {"download", "prepare"}:
+            STEPS[args.step](force_yes=args.yes)
+        else:
+            STEPS[args.step]()
     else:
-        step_prepare()
+        step_prepare(force_yes=args.yes)
         step_train()
         step_evaluate()
+        step_compare()
 
     print("\n" + "=" * 60)
     print("DONE — View results: mlflow ui")

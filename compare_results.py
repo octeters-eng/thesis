@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import mlflow
 
-from config import RESULTS_DIR, RUNS_DIR, METRICS_TO_COMPARE, MLFLOW_TRACKING_URI, MLFLOW_EXPERIMENT_NAME
+from config import RESULTS_DIR, RUNS_DIR, MLFLOW_TRACKING_URI, MLFLOW_EXPERIMENT_NAME
 
 
 RESULTS_FILE = RESULTS_DIR / "evaluation_results.json"
@@ -301,7 +301,9 @@ def generate_summary_report(results: dict, df: pd.DataFrame) -> str:
     lines.append("SEED RECOGNITION — YOLO CLASSIFICATION MODEL COMPARISON")
     lines.append("=" * 70)
     lines.append(f"\nModels evaluated: {len(df)}")
-    lines.append(f"Number of classes: {len(results[list(results.keys())[0]].get('class_names', []))}")
+    first_key = next(iter(results.keys()), None)
+    n_classes = len(results[first_key].get("class_names", [])) if first_key else 0
+    lines.append(f"Number of classes: {n_classes}")
 
     if not df.empty:
         best_acc = df.loc[df["Top-1 Acc"].idxmax()]
